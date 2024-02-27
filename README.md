@@ -1,3 +1,12 @@
+# Лабораторные работы по ППО
+## Команда #1 (ex #2)
+- Андреев Артём
+- Евтушенко Иван
+- Круглов Георгий
+- Полухин Максим
+- Шевченко Валерий
+### группа M34001
+
 # Template for the HighLoad course
 This project is based on [Tiny Event Sourcing library](https://github.com/andrsuh/tiny-event-sourcing)
 
