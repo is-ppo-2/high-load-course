@@ -20,7 +20,8 @@ data class ExternalServiceProperties(
     val accountName: String,
     val parallelRequests: Int,
     val rateLimitPerSec: Int,
-    val request95thPercentileProcessingTime: Duration = Duration.ofSeconds(11)
+    val request95thPercentileProcessingTime: Duration = Duration.ofSeconds(11),
+    val cost: Int
 )
 
 /**
@@ -30,3 +31,5 @@ class ExternalSysResponse(
     val result: Boolean,
     val message: String? = null,
 )
+
+val PaymentOperationTimeout = Duration.ofSeconds(80)
