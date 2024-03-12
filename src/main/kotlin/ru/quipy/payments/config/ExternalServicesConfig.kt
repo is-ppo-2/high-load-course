@@ -2,13 +2,20 @@ package ru.quipy.payments.config
 
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import ru.quipy.core.EventSourcingService
+import ru.quipy.payments.api.PaymentAggregate
+import ru.quipy.payments.logic.AccountBalancer
 import ru.quipy.payments.logic.ExternalServiceProperties
+import ru.quipy.payments.logic.PaymentAggregateState
 import ru.quipy.payments.logic.PaymentExternalServiceImpl
 import java.time.Duration
+import java.util.*
 
 
 @Configuration
-class ExternalServicesConfig {
+class ExternalServicesConfig(
+    private val paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>
+) {
     companion object {
         const val PRIMARY_PAYMENT_BEAN = "PRIMARY_PAYMENT_BEAN"
 
@@ -53,8 +60,9 @@ class ExternalServicesConfig {
     }
 
     @Bean(PRIMARY_PAYMENT_BEAN)
-    fun fastExternalService() =
-        PaymentExternalServiceImpl(
-            accountProps_4,
+    fun optimalExternalService() =
+        AccountBalancer(listOf(
+            PaymentExternalServiceImpl(accountProps_1, paymentESService),
+            PaymentExternalServiceImpl(accountProps_2, paymentESService))
         )
 }

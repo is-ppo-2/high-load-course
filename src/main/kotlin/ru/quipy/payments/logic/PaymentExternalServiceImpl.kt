@@ -19,6 +19,7 @@ import java.util.concurrent.Executors
 // Advice: always treat time as a Duration
 class PaymentExternalServiceImpl(
     private val properties: ExternalServiceProperties,
+    private val paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>
 ) : PaymentExternalService {
 
     companion object {
@@ -36,13 +37,11 @@ class PaymentExternalServiceImpl(
     private val rateLimitPerSec = properties.rateLimitPerSec
     private val parallelRequests = properties.parallelRequests
 
-    @Autowired
-    private lateinit var paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>
-
     private val httpClientExecutor = Executors.newSingleThreadExecutor()
 
     private val client = OkHttpClient.Builder().run {
         dispatcher(Dispatcher(httpClientExecutor))
+        callTimeout(paymentOperationTimeout)
         build()
     }
 
