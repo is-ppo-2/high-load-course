@@ -10,6 +10,7 @@ import ru.quipy.payments.logic.PaymentAggregateState
 import ru.quipy.payments.logic.PaymentExternalServiceImpl
 import java.time.Duration
 import java.util.*
+import java.util.concurrent.atomic.AtomicInteger
 
 
 @Configuration
@@ -61,8 +62,8 @@ class ExternalServicesConfig(
 
     @Bean(PRIMARY_PAYMENT_BEAN)
     fun optimalExternalService() =
-        AccountBalancer(listOf(
+        AccountBalancer(
             PaymentExternalServiceImpl(accountProps_1, paymentESService),
-            PaymentExternalServiceImpl(accountProps_2, paymentESService))
+            PaymentExternalServiceImpl(accountProps_2, paymentESService)
         )
 }

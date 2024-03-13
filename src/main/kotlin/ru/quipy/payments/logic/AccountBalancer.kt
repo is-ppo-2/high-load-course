@@ -1,33 +1,39 @@
 package ru.quipy.payments.logic
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import org.springframework.beans.factory.DisposableBean
+import java.time.Duration
 import java.util.*
+import java.util.concurrent.atomic.AtomicInteger
 
 class AccountBalancer(
-    private val services: List<PaymentExternalServiceImpl>
+    private val service1: PaymentExternalServiceImpl,
+    private val service2: PaymentExternalServiceImpl
 ) : PaymentExternalService, DisposableBean {
     private val scope = CoroutineScope(Dispatchers.IO)
+    private val secondAccCounter = AtomicInteger(0)
 
     override fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long) {
-        val decision = decide(paymentStartedAt)
         scope.launch {
-            services[decision].submitPaymentRequest(paymentId, amount, paymentStartedAt)
+            val decision = decide(paymentStartedAt)
+            decision.submitPaymentRequest(paymentId, amount, paymentStartedAt)
+            if (decision == service2)
+                secondAccCounter.decrementAndGet()
         }
     }
 
-    private fun decide(paymentStartedAt: Long): Int {
-        val timeLeft = PaymentOperationTimeout.toMillis() - (now() - paymentStartedAt)
-        val service2Time = services[1].requestAverageProcessingTime.toMillis()
-
-        if (timeLeft > service2Time) {
-            return 1
+    private suspend fun decide(paymentStartedAt: Long): PaymentExternalServiceImpl {
+        val waitStartTime = now()
+        while (Duration.ofMillis(now() - waitStartTime - paymentStartedAt) <= service2.requestAverageProcessingTime) {
+            val curCount = secondAccCounter.get()
+            if (curCount < service2.parallelRequests) {
+                if (secondAccCounter.compareAndSet(curCount, curCount + 1)) {
+                    return service2
+                }
+            }
+            delay(1000)
         }
-
-        return 0
+        return service1
     }
 
     override fun destroy() {
