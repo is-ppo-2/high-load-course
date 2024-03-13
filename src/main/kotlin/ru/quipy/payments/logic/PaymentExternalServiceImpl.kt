@@ -7,7 +7,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Autowired
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
 import java.net.SocketTimeoutException
@@ -25,23 +24,22 @@ class PaymentExternalServiceImpl(
     companion object {
         val logger = LoggerFactory.getLogger(PaymentExternalServiceImpl::class.java)
 
-        val paymentOperationTimeout = Duration.ofSeconds(80)
-
         val emptyBody = RequestBody.create(null, ByteArray(0))
         val mapper = ObjectMapper().registerKotlinModule()
     }
 
-    private val serviceName = properties.serviceName
-    private val accountName = properties.accountName
-    private val requestAverageProcessingTime = properties.request95thPercentileProcessingTime
-    private val rateLimitPerSec = properties.rateLimitPerSec
-    private val parallelRequests = properties.parallelRequests
+    val serviceName = properties.serviceName
+    val accountName = properties.accountName
+    val requestAverageProcessingTime = properties.request95thPercentileProcessingTime
+    val rateLimitPerSec = properties.rateLimitPerSec
+    val parallelRequests = properties.parallelRequests
 
     private val httpClientExecutor = Executors.newSingleThreadExecutor()
 
     private val client = OkHttpClient.Builder().run {
         dispatcher(Dispatcher(httpClientExecutor))
-        callTimeout(paymentOperationTimeout)
+        readTimeout(requestAverageProcessingTime)
+        callTimeout(PaymentOperationTimeout.minus(requestAverageProcessingTime))
         build()
     }
 
