@@ -4,6 +4,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import ru.quipy.common.utils.CoroutineOngoingWindow
 import ru.quipy.common.utils.CoroutineRateLimiter
+import ru.quipy.common.utils.TaskContext
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
 import ru.quipy.payments.logic.ExternalServiceProperties
@@ -32,7 +33,8 @@ class ExternalServicesConfig(
             parallelRequests = 10000,
             rateLimitPerSec = 100,
             request95thPercentileProcessingTime = Duration.ofMillis(1000),
-            cost = 100
+            cost = 100,
+            threadPoolSize = 1
         )
 
         private val accountProps_2 = ExternalServiceProperties(
@@ -42,7 +44,8 @@ class ExternalServicesConfig(
             parallelRequests = 100,
             rateLimitPerSec = 30,
             request95thPercentileProcessingTime = Duration.ofMillis(10_000),
-            cost = 70
+            cost = 70,
+            threadPoolSize = 4
         )
 
         private val accountProps_3 = ExternalServiceProperties(
@@ -52,7 +55,8 @@ class ExternalServicesConfig(
             parallelRequests = 30,
             rateLimitPerSec = 8,
             request95thPercentileProcessingTime = Duration.ofMillis(10_000),
-            cost = 40
+            cost = 40,
+            threadPoolSize = 4,
         )
 
         // Call costs 30
@@ -62,7 +66,8 @@ class ExternalServicesConfig(
             parallelRequests = 8,
             rateLimitPerSec = 5,
             request95thPercentileProcessingTime = Duration.ofMillis(10_000),
-            cost = 30
+            cost = 30,
+            threadPoolSize = 4
         )
     }
 
@@ -70,15 +75,32 @@ class ExternalServicesConfig(
     fun optimalExternalService() =
         PaymentServiceBalancer(
             listOf(
-                PaymentExternalServiceImpl(accountProps_1, paymentESService),
-                PaymentExternalServiceImpl(accountProps_2, paymentESService)),
-            listOf(
-                CoroutineRateLimiter(accountProps_1.rateLimitPerSec, TimeUnit.SECONDS),
-                CoroutineRateLimiter(accountProps_2.rateLimitPerSec, TimeUnit.SECONDS)
-            ),
-            listOf(
-                CoroutineOngoingWindow(accountProps_1.parallelRequests),
-                CoroutineOngoingWindow(accountProps_2.parallelRequests)
+                ServiceSet(
+                    PaymentExternalServiceImpl(accountProps_1, paymentESService),
+                    CoroutineRateLimiter(accountProps_1.rateLimitPerSec, TimeUnit.SECONDS),
+                    TaskContext(CoroutineOngoingWindow(accountProps_1.parallelRequests)),
+                ),
+                ServiceSet(
+                    PaymentExternalServiceImpl(accountProps_2, paymentESService),
+                    CoroutineRateLimiter(accountProps_2.rateLimitPerSec, TimeUnit.SECONDS),
+                    TaskContext(CoroutineOngoingWindow(accountProps_2.parallelRequests)),
+                ),
+                ServiceSet(
+                    PaymentExternalServiceImpl(accountProps_3, paymentESService),
+                    CoroutineRateLimiter(accountProps_3.rateLimitPerSec, TimeUnit.SECONDS),
+                    TaskContext(CoroutineOngoingWindow(accountProps_3.parallelRequests)),
+                ),
+                ServiceSet(
+                    PaymentExternalServiceImpl(accountProps_4, paymentESService),
+                    CoroutineRateLimiter(accountProps_4.rateLimitPerSec, TimeUnit.SECONDS),
+                    TaskContext(CoroutineOngoingWindow(accountProps_4.parallelRequests)),
+                ),
             )
         )
 }
+
+class ServiceSet(
+    val service: PaymentExternalServiceImpl,
+    val rateLimiter: CoroutineRateLimiter,
+    val context: TaskContext
+)

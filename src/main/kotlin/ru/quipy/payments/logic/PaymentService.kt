@@ -21,8 +21,11 @@ data class ExternalServiceProperties(
     val parallelRequests: Int,
     val rateLimitPerSec: Int,
     val request95thPercentileProcessingTime: Duration = Duration.ofSeconds(11),
-    val cost: Int
-)
+    val cost: Int,
+    val threadPoolSize: Int
+) {
+    val speed get() =  minOf(parallelRequests * 1.0 / request95thPercentileProcessingTime.toMillis() * 1000, rateLimitPerSec * 1.0)
+}
 
 /**
  * Describes response from external service.

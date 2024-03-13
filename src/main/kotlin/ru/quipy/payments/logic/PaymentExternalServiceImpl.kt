@@ -4,8 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import okhttp3.*
 import org.slf4j.LoggerFactory
-import ru.quipy.common.utils.CoroutineOngoingWindow
-import ru.quipy.common.utils.NamedThreadFactory
+import ru.quipy.common.utils.TaskContext
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
 import java.io.IOException
@@ -32,8 +31,10 @@ class PaymentExternalServiceImpl(
     val requestAverageProcessingTime = properties.request95thPercentileProcessingTime
     val rateLimitPerSec = properties.rateLimitPerSec
     val parallelRequests = properties.parallelRequests
+    val cost = properties.cost
+    val speed = properties.speed
 
-    private val httpClientExecutor = Executors.newFixedThreadPool(8, NamedThreadFactory("http-executor"))
+    private val httpClientExecutor = Executors.newFixedThreadPool(properties.threadPoolSize)
 
     private val client = OkHttpClient.Builder().run {
         dispatcher(Dispatcher(httpClientExecutor))
@@ -42,7 +43,7 @@ class PaymentExternalServiceImpl(
         build()
     }
 
-    fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long, window: CoroutineOngoingWindow) {
+    fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long, context: TaskContext) {
         logger.warn("[$accountName] Submitting payment request for payment $paymentId. Already passed: ${now() - paymentStartedAt} ms")
 
         val transactionId = UUID.randomUUID()
@@ -61,12 +62,12 @@ class PaymentExternalServiceImpl(
 
         return client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                window.release()
+                context.release()
                 handleException(paymentId, transactionId, e)
             }
 
             override fun onResponse(call: Call, response: Response) {
-                window.release()
+                context.release()
                 val body = try {
                     mapper.readValue(response.body?.string(), ExternalSysResponse::class.java)
                 } catch (e: Exception) {

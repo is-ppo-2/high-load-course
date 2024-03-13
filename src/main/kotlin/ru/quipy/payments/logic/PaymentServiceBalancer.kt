@@ -1,49 +1,49 @@
 package ru.quipy.payments.logic
 
 import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.DisposableBean
 import org.springframework.stereotype.Service
-import ru.quipy.common.utils.CoroutineOngoingWindow
-import ru.quipy.common.utils.CoroutineRateLimiter
+import ru.quipy.payments.config.ServiceSet
 import java.util.*
 
 @Service
 class PaymentServiceBalancer(
-    private val services: List<PaymentExternalServiceImpl>,
-    private val rateLimiters: List<CoroutineRateLimiter>,
-    private val windows: List<CoroutineOngoingWindow>
+    serviceSets: List<ServiceSet>
     ) : PaymentExternalService, DisposableBean {
 
+    private val sortedSets = serviceSets.sortedBy { it.service.cost }.toList()
     private val logger = LoggerFactory.getLogger(PaymentServiceBalancer::class.java)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val mutex = Mutex()
 
     override fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long) {
-        val timePassed = now() - paymentStartedAt
-        val timeLeft = PaymentOperationTimeout.toMillis() - timePassed
-
         scope.launch {
-            mutex.withLock {
-                val decision = makeDecision()
-                val rateLimiter = rateLimiters[decision]
-                val window =  windows[decision]
-                rateLimiter.tickBlocking()
-                window.acquire()
-                logger.warn("Dec: $decision, RL: ${rateLimiter.permits}, OW: ${window.permits} /")
-                services[decision].submitPaymentRequest(paymentId, amount, paymentStartedAt, windows[decision])
-            }
+            val decision = makeDecision(paymentStartedAt)
+            decision.context.acquireWindow()
+            decision.rateLimiter.tickBlocking()
+            logger.warn("[${now() / 1000}, $paymentId]")
+            decision.service.submitPaymentRequest(paymentId, amount, paymentStartedAt, decision.context)
         }
     }
 
-    private fun makeDecision(): Int {
-        if (rateLimiters[1].permits == 0)
-            return 0
-        if (windows[1].permits == 0)
-            return 0
-        return 1
+    private fun makeDecision(paymentStartedAt: Long): ServiceSet {
+        sortedSets.forEach {
+            while (true) {
+                val timePassed = now() - paymentStartedAt
+                val timeLeft = PaymentOperationTimeout.toMillis() - timePassed
+                val canWait = (timeLeft - it.service.requestAverageProcessingTime.toMillis()) / 1000.0 * it.service.speed
+                val queued = it.context.jobCount.get()
+                logger.warn("[${now() / 1000}, ${timePassed / 1000}] ${it.service.accountName} can wait: $canWait but queued: $queued")
+                if (canWait - queued >= 1) {
+                    if (it.context.jobCount.compareAndSet(queued, queued + 1))
+                        return it
+                } else {
+                    break
+                }
+            }
+        }
+
+        return sortedSets.last()
     }
 
     override fun destroy() {
