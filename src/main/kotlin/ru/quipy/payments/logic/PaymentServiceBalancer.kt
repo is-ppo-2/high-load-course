@@ -14,27 +14,26 @@ class PaymentServiceBalancer(
 
     private val sortedSets = serviceSets.sortedBy { it.service.cost }.toList()
     private val logger = LoggerFactory.getLogger(PaymentServiceBalancer::class.java)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long) {
         scope.launch {
             val decision = makeDecision(paymentStartedAt)
             decision.context.acquireWindow()
             decision.rateLimiter.tickBlocking()
-            logger.warn("[${now() / 1000}, $paymentId]")
-            decision.service.submitPaymentRequest(paymentId, amount, paymentStartedAt, decision.context)
+            decision.service.submitPaymentRequest(paymentId, amount, paymentStartedAt)
+            decision.context.release()
         }
     }
 
-    private fun makeDecision(paymentStartedAt: Long): ServiceSet {
+    private suspend fun makeDecision(paymentStartedAt: Long): ServiceSet {
         sortedSets.forEach {
             while (true) {
                 val timePassed = now() - paymentStartedAt
                 val timeLeft = PaymentOperationTimeout.toMillis() - timePassed
                 val canWait = (timeLeft - it.service.requestAverageProcessingTime.toMillis()) / 1000.0 * it.service.speed
                 val queued = it.context.jobCount.get()
-                logger.warn("[${now() / 1000}, ${timePassed / 1000}] ${it.service.accountName} can wait: $canWait but queued: $queued. Should start execution ${queued / it.service.speed}")
-                if (canWait - queued >= 10) {
+                if (canWait - queued >= 1) {
                     if (it.context.jobCount.compareAndSet(queued, queued + 1))
                         return it
                 } else {
