@@ -25,9 +25,8 @@ class AccountBalancer(
     }
 
     private suspend fun decide(paymentStartedAt: Long): PaymentExternalServiceImpl {
-        val waitStartTime = now()
         var waitCount = 0
-        while (Duration.ofMillis(now() - waitStartTime - paymentStartedAt) <= service2.requestAverageProcessingTime) {
+        while (Duration.ofMillis(now() - paymentStartedAt) <= service2.requestAverageProcessingTime) {
             val curCount = secondAccCounter.get()
             if (curCount < service2.parallelRequests) {
                 if (secondAccCounter.compareAndSet(curCount, curCount + 1)) {
@@ -35,7 +34,7 @@ class AccountBalancer(
                 }
             }
             waitCount++
-            logger.warn("Have to wait $waitCount time for 1 second")
+            logger.warn("Have to wait $waitCount seconds")
             delay(1000)
         }
         return service1
