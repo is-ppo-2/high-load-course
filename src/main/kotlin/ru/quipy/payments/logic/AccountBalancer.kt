@@ -1,6 +1,7 @@
 package ru.quipy.payments.logic
 
 import kotlinx.coroutines.*
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.DisposableBean
 import java.time.Duration
 import java.util.*
@@ -12,6 +13,7 @@ class AccountBalancer(
 ) : PaymentExternalService, DisposableBean {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val secondAccCounter = AtomicInteger(0)
+    private val logger = LoggerFactory.getLogger(AccountBalancer::class.java)
 
     override fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long) {
         scope.launch {
@@ -24,6 +26,7 @@ class AccountBalancer(
 
     private suspend fun decide(paymentStartedAt: Long): PaymentExternalServiceImpl {
         val waitStartTime = now()
+        var waitCount = 0
         while (Duration.ofMillis(now() - waitStartTime - paymentStartedAt) <= service2.requestAverageProcessingTime) {
             val curCount = secondAccCounter.get()
             if (curCount < service2.parallelRequests) {
@@ -31,6 +34,8 @@ class AccountBalancer(
                     return service2
                 }
             }
+            waitCount++
+            logger.warn("Have to wait $waitCount time for 1 second")
             delay(1000)
         }
         return service1
