@@ -33,8 +33,8 @@ class PaymentServiceBalancer(
                 val timeLeft = PaymentOperationTimeout.toMillis() - timePassed
                 val canWait = (timeLeft - it.service.requestAverageProcessingTime.toMillis()) / 1000.0 * it.service.speed
                 val queued = it.context.jobCount.get()
-                logger.warn("[${now() / 1000}, ${timePassed / 1000}] ${it.service.accountName} can wait: $canWait but queued: $queued")
-                if (canWait - queued >= 1) {
+                logger.warn("[${now() / 1000}, ${timePassed / 1000}] ${it.service.accountName} can wait: $canWait but queued: $queued. Should start execution ${queued / it.service.speed}")
+                if (canWait - queued >= 10) {
                     if (it.context.jobCount.compareAndSet(queued, queued + 1))
                         return it
                 } else {

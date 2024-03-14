@@ -19,7 +19,6 @@ class PaymentExternalServiceImpl(
     private val properties: ExternalServiceProperties,
     private val paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>
 ) {
-
     companion object {
         val logger = LoggerFactory.getLogger(PaymentExternalServiceImpl::class.java)
         val emptyBody = RequestBody.create(null, ByteArray(0))
@@ -108,4 +107,4 @@ class PaymentExternalServiceImpl(
     }
 }
 
-public fun now() = System.currentTimeMillis()
+fun now() = System.currentTimeMillis()
