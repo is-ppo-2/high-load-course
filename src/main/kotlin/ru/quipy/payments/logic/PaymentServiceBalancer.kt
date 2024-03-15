@@ -14,15 +14,14 @@ class PaymentServiceBalancer(
 
     private val sortedSets = serviceSets.sortedBy { it.service.cost }.toList()
     private val logger = LoggerFactory.getLogger(PaymentServiceBalancer::class.java)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long) {
         scope.launch {
             val decision = makeDecision(paymentStartedAt)
             decision.context.acquireWindow()
             decision.rateLimiter.tickBlocking()
-            decision.service.submitPaymentRequest(paymentId, amount, paymentStartedAt)
-            decision.context.release()
+            decision.service.submitPaymentRequest(paymentId, amount, paymentStartedAt, decision.context)
         }
     }
 
