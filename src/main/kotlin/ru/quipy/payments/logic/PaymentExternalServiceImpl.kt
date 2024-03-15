@@ -39,14 +39,23 @@ class PaymentExternalServiceImpl(
     private val client = OkHttpClient.Builder().run {
         dispatcher(Dispatcher(httpClientExecutor))
         readTimeout(requestAverageProcessingTime)
-        callTimeout(PaymentOperationTimeout.minus(requestAverageProcessingTime))
+        callTimeout(requestAverageProcessingTime.multipliedBy(2))
         build()
     }
 
     override fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long) {
-        logger.warn("[$accountName] Submitting payment request for payment $paymentId. Already passed: ${now() - paymentStartedAt} ms")
+        val passed = now() - paymentStartedAt
+        logger.warn("[$accountName] Submitting payment request for payment $paymentId. Already passed: ${passed} ms")
 
         val transactionId = UUID.randomUUID()
+
+        if (Duration.ofMillis(passed) > PaymentOperationTimeout) {
+            paymentESService.update(paymentId) {
+                it.logProcessing(false, now(), transactionId, reason = "Request timeout.")
+            }
+            return
+        }
+
         logger.info("[$accountName] Submit for $paymentId , txId: $transactionId")
 
         // Вне зависимости от исхода оплаты важно отметить что она была отправлена.
