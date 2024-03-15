@@ -30,3 +30,5 @@ class ExternalSysResponse(
     val result: Boolean,
     val message: String? = null,
 )
+
+val PaymentOperationTimeout = Duration.ofSeconds(80)

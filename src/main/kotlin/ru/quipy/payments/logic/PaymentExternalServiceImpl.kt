@@ -7,7 +7,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Autowired
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
 import java.net.SocketTimeoutException
@@ -19,37 +18,44 @@ import java.util.concurrent.Executors
 // Advice: always treat time as a Duration
 class PaymentExternalServiceImpl(
     private val properties: ExternalServiceProperties,
+    private val paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>
 ) : PaymentExternalService {
 
     companion object {
         val logger = LoggerFactory.getLogger(PaymentExternalServiceImpl::class.java)
 
-        val paymentOperationTimeout = Duration.ofSeconds(80)
-
         val emptyBody = RequestBody.create(null, ByteArray(0))
         val mapper = ObjectMapper().registerKotlinModule()
     }
 
-    private val serviceName = properties.serviceName
-    private val accountName = properties.accountName
-    private val requestAverageProcessingTime = properties.request95thPercentileProcessingTime
-    private val rateLimitPerSec = properties.rateLimitPerSec
-    private val parallelRequests = properties.parallelRequests
-
-    @Autowired
-    private lateinit var paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>
+    val serviceName = properties.serviceName
+    val accountName = properties.accountName
+    val requestAverageProcessingTime = properties.request95thPercentileProcessingTime
+    val rateLimitPerSec = properties.rateLimitPerSec
+    val parallelRequests = properties.parallelRequests
 
     private val httpClientExecutor = Executors.newSingleThreadExecutor()
 
     private val client = OkHttpClient.Builder().run {
         dispatcher(Dispatcher(httpClientExecutor))
+        readTimeout(requestAverageProcessingTime)
+        callTimeout(requestAverageProcessingTime.multipliedBy(2))
         build()
     }
 
     override fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long) {
-        logger.warn("[$accountName] Submitting payment request for payment $paymentId. Already passed: ${now() - paymentStartedAt} ms")
+        val passed = now() - paymentStartedAt
+        logger.warn("[$accountName] Submitting payment request for payment $paymentId. Already passed: ${passed} ms")
 
         val transactionId = UUID.randomUUID()
+
+        if (Duration.ofMillis(passed) > PaymentOperationTimeout) {
+            paymentESService.update(paymentId) {
+                it.logProcessing(false, now(), transactionId, reason = "Request timeout.")
+            }
+            return
+        }
+
         logger.info("[$accountName] Submit for $paymentId , txId: $transactionId")
 
         // Вне зависимости от исхода оплаты важно отметить что она была отправлена.
