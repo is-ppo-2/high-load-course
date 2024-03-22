@@ -13,6 +13,7 @@ import ru.quipy.payments.logic.PaymentExternalServiceImpl
 import ru.quipy.payments.logic.PaymentServiceBalancer
 import java.time.Duration
 import java.util.*
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 
@@ -33,7 +34,8 @@ class ExternalServicesConfig(
             parallelRequests = 10000,
             rateLimitPerSec = 100,
             request95thPercentileProcessingTime = Duration.ofMillis(1000),
-            cost = 100
+            cost = 100,
+            executor = Executors.newCachedThreadPool()
         )
 
         private val accountProps_2 = ExternalServiceProperties(
@@ -43,7 +45,8 @@ class ExternalServicesConfig(
             parallelRequests = 100,
             rateLimitPerSec = 30,
             request95thPercentileProcessingTime = Duration.ofMillis(10_000),
-            cost = 70
+            cost = 70,
+            executor = Executors.newFixedThreadPool(100)
         )
 
         private val accountProps_3 = ExternalServiceProperties(
@@ -53,7 +56,8 @@ class ExternalServicesConfig(
             parallelRequests = 30,
             rateLimitPerSec = 8,
             request95thPercentileProcessingTime = Duration.ofMillis(10_000),
-            cost = 40
+            cost = 40,
+            executor = Executors.newFixedThreadPool(30)
         )
 
         // Call costs 30
@@ -63,7 +67,8 @@ class ExternalServicesConfig(
             parallelRequests = 8,
             rateLimitPerSec = 5,
             request95thPercentileProcessingTime = Duration.ofMillis(10_000),
-            cost = 30
+            cost = 30,
+            executor = Executors.newFixedThreadPool(8)
         )
     }
 

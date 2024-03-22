@@ -32,7 +32,7 @@ class PaymentExternalServiceImpl(
     val speed = properties.speed
     val cost = properties.cost
 
-    private val httpClientExecutor = Executors.newFixedThreadPool(4)
+    private val httpClientExecutor = properties.executor
 
     private val client = OkHttpClient.Builder() .run {
         dispatcher(Dispatcher(httpClientExecutor).apply {
