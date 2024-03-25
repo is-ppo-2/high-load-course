@@ -12,6 +12,7 @@ import java.net.SocketTimeoutException
 import java.time.Duration
 import java.util.*
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 
 class PaymentExternalServiceImpl(
@@ -39,6 +40,8 @@ class PaymentExternalServiceImpl(
             maxRequests = properties.parallelRequests
             maxRequestsPerHost = properties.parallelRequests
         })
+        connectionPool(ConnectionPool(properties.parallelRequests, properties.request95thPercentileProcessingTime.seconds, TimeUnit.SECONDS))
+        protocols(Collections.singletonList(Protocol.H2_PRIOR_KNOWLEDGE))
         connectTimeout(requestAverageProcessingTime)
         readTimeout(requestAverageProcessingTime)
         retryOnConnectionFailure(false)

@@ -35,7 +35,7 @@ class ExternalServicesConfig(
             rateLimitPerSec = 100,
             request95thPercentileProcessingTime = Duration.ofMillis(1000),
             cost = 100,
-            executor = Executors.newCachedThreadPool()
+            executor = Executors.newFixedThreadPool(100)
         )
 
         private val accountProps_2 = ExternalServiceProperties(
@@ -76,11 +76,6 @@ class ExternalServicesConfig(
     fun optimalExternalService() =
         PaymentServiceBalancer(
             listOf(
-                ServiceSet(
-                    PaymentExternalServiceImpl(accountProps_1, paymentESService),
-                    CoroutineRateLimiter(accountProps_1.rateLimitPerSec, TimeUnit.SECONDS),
-                    TaskContext(CoroutineOngoingWindow(accountProps_1.parallelRequests)),
-                ),
                 ServiceSet(
                     PaymentExternalServiceImpl(accountProps_2, paymentESService),
                     CoroutineRateLimiter(accountProps_2.rateLimitPerSec, TimeUnit.SECONDS),
