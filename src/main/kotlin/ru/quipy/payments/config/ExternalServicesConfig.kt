@@ -4,6 +4,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import ru.quipy.common.utils.CoroutineOngoingWindow
 import ru.quipy.common.utils.CoroutineRateLimiter
+import ru.quipy.common.utils.NamedThreadFactory
 import ru.quipy.common.utils.TaskWindow
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
@@ -27,16 +28,16 @@ class ExternalServicesConfig(
         // Ниже приведены готовые конфигурации нескольких аккаунтов провайдера оплаты.
         // Заметьте, что каждый аккаунт обладает своими характеристиками и стоимостью вызова.
 
-        private val accountProps_1 = ExternalServiceProperties(
-            // most expensive. Call costs 100
-            "test",
-            "default-1",
-            parallelRequests = 10000,
-            rateLimitPerSec = 100,
-            request95thPercentileProcessingTime = Duration.ofMillis(1000),
-            cost = 100,
-            executor = Executors.newFixedThreadPool(100)
-        )
+//        private val accountProps_1 = ExternalServiceProperties(
+//            // most expensive. Call costs 100
+//            "test",
+//            "default-1",
+//            parallelRequests = 10000,
+//            rateLimitPerSec = 100,
+//            request95thPercentileProcessingTime = Duration.ofMillis(1000),
+//            cost = 100,
+//            executor = Executors.newFixedThreadPool(100, NamedThreadFactory("http-executor-default-1"))
+//        )
 
         private val accountProps_2 = ExternalServiceProperties(
             // Call costs 70
@@ -46,7 +47,7 @@ class ExternalServicesConfig(
             rateLimitPerSec = 30,
             request95thPercentileProcessingTime = Duration.ofMillis(10_000),
             cost = 70,
-            executor = Executors.newFixedThreadPool(100)
+            httpExecutor = Executors.newFixedThreadPool(30, NamedThreadFactory("http-executor-default-2"))
         )
 
         private val accountProps_3 = ExternalServiceProperties(
@@ -57,7 +58,7 @@ class ExternalServicesConfig(
             rateLimitPerSec = 8,
             request95thPercentileProcessingTime = Duration.ofMillis(10_000),
             cost = 40,
-            executor = Executors.newFixedThreadPool(30)
+            httpExecutor = Executors.newFixedThreadPool(30, NamedThreadFactory("http-executor-default-3"))
         )
 
         // Call costs 30
@@ -68,7 +69,7 @@ class ExternalServicesConfig(
             rateLimitPerSec = 5,
             request95thPercentileProcessingTime = Duration.ofMillis(10_000),
             cost = 30,
-            executor = Executors.newFixedThreadPool(8)
+            httpExecutor = Executors.newFixedThreadPool(8, NamedThreadFactory("http-executor-default-4"))
         )
     }
 
@@ -91,7 +92,8 @@ class ExternalServicesConfig(
                     CoroutineRateLimiter(accountProps_4.rateLimitPerSec, TimeUnit.SECONDS),
                     TaskWindow(CoroutineOngoingWindow(accountProps_4.parallelRequests)),
                 ),
-            )
+            ),
+            paymentESService
         )
 }
 

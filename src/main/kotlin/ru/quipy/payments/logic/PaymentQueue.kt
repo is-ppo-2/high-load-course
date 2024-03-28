@@ -1,7 +1,7 @@
 package ru.quipy.payments.logic
 
 import kotlinx.coroutines.*
-import org.slf4j.LoggerFactory
+import ru.quipy.common.utils.NamedThreadFactory
 import ru.quipy.payments.config.ServiceSet
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
@@ -9,9 +9,12 @@ import java.util.concurrent.Executors
 class PaymentQueue(
     private val set: ServiceSet,
 ) {
-    private val queueContext = CoroutineScope(SupervisorJob() + Executors.newFixedThreadPool(4).asCoroutineDispatcher())
-    private val queue = ConcurrentLinkedQueue<PaymentRequest>()
     val accountName = set.service.accountName
+    private val queueContext = CoroutineScope(SupervisorJob() +
+            Executors.newFixedThreadPool(4, NamedThreadFactory("payment-queue-$accountName"))
+        .asCoroutineDispatcher())
+
+    private val queue = ConcurrentLinkedQueue<PaymentRequest>()
 
     fun tryEnqueue(request: PaymentRequest): Boolean {
         while (true) {
@@ -38,7 +41,12 @@ class PaymentQueue(
                 set.rateLimiter.tickBlocking()
                 set.service.submitPaymentRequest(task.paymentId, task.amount, task.paymentStartedAt, set.window)
             }
-            yield()
+            else yield()
         }
+    }
+
+    fun destroy() {
+        queueContext.cancel()
+        set.service.destroy()
     }
 }

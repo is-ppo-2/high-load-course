@@ -23,7 +23,7 @@ data class ExternalServiceProperties(
     val rateLimitPerSec: Int,
     val request95thPercentileProcessingTime: Duration = Duration.ofSeconds(11),
     val cost: Int,
-    val executor: ExecutorService
+    val httpExecutor: ExecutorService
 ) {
     /**
      * Requests per second
