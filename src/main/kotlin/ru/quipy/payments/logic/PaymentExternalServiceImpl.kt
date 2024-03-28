@@ -4,14 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import okhttp3.*
 import org.slf4j.LoggerFactory
-import ru.quipy.common.utils.TaskContext
+import ru.quipy.common.utils.TaskWindow
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
+import ru.quipy.payments.exceptions.OutOfProcessingSpeedException
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.time.Duration
 import java.util.*
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 
@@ -48,7 +48,7 @@ class PaymentExternalServiceImpl(
         build()
     }
 
-    fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long, context: TaskContext) {
+    fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long, window: TaskWindow) {
         val passed = now() - paymentStartedAt
         logger.warn("[$accountName] Submitting payment request for payment $paymentId. Already passed: $passed ms")
 
@@ -75,12 +75,12 @@ class PaymentExternalServiceImpl(
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                context.release()
+                window.release()
                 handleException(paymentId, transactionId, e)
             }
 
             override fun onResponse(call: Call, response: Response) {
-                context.release()
+                window.release()
                 val body = try {
                     mapper.readValue(response.body?.string(), ExternalSysResponse::class.java)
                 } catch (e: Exception) {
@@ -99,11 +99,17 @@ class PaymentExternalServiceImpl(
         })
     }
 
-    private fun handleException(paymentId: UUID, transactionId: UUID, exception: Exception) {
+    fun handleException(paymentId: UUID, transactionId: UUID, exception: Exception) {
         when (exception) {
             is SocketTimeoutException -> {
                 paymentESService.update(paymentId) {
                     it.logProcessing(false, now(), transactionId, reason = "Request timeout.")
+                }
+            }
+
+            is OutOfProcessingSpeedException -> {
+                paymentESService.update(paymentId) {
+                    it.logProcessing(false, now(), transactionId, reason = "Request can't be processed due to lack of processing speed")
                 }
             }
 

@@ -2,7 +2,7 @@ package ru.quipy.common.utils
 
 import java.util.concurrent.atomic.AtomicInteger
 
-class TaskContext(
+class TaskWindow(
    private val window: CoroutineOngoingWindow,
 ) {
     var jobCount: AtomicInteger = AtomicInteger(0)

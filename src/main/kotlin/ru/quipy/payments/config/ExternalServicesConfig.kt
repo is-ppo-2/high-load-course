@@ -4,7 +4,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import ru.quipy.common.utils.CoroutineOngoingWindow
 import ru.quipy.common.utils.CoroutineRateLimiter
-import ru.quipy.common.utils.TaskContext
+import ru.quipy.common.utils.TaskWindow
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
 import ru.quipy.payments.logic.ExternalServiceProperties
@@ -79,17 +79,17 @@ class ExternalServicesConfig(
                 ServiceSet(
                     PaymentExternalServiceImpl(accountProps_2, paymentESService),
                     CoroutineRateLimiter(accountProps_2.rateLimitPerSec, TimeUnit.SECONDS),
-                    TaskContext(CoroutineOngoingWindow(accountProps_2.parallelRequests)),
+                    TaskWindow(CoroutineOngoingWindow(accountProps_2.parallelRequests)),
                 ),
                 ServiceSet(
                     PaymentExternalServiceImpl(accountProps_3, paymentESService),
                     CoroutineRateLimiter(accountProps_3.rateLimitPerSec, TimeUnit.SECONDS),
-                    TaskContext(CoroutineOngoingWindow(accountProps_3.parallelRequests)),
+                    TaskWindow(CoroutineOngoingWindow(accountProps_3.parallelRequests)),
                 ),
                 ServiceSet(
                     PaymentExternalServiceImpl(accountProps_4, paymentESService),
                     CoroutineRateLimiter(accountProps_4.rateLimitPerSec, TimeUnit.SECONDS),
-                    TaskContext(CoroutineOngoingWindow(accountProps_4.parallelRequests)),
+                    TaskWindow(CoroutineOngoingWindow(accountProps_4.parallelRequests)),
                 ),
             )
         )
@@ -98,5 +98,5 @@ class ExternalServicesConfig(
 class ServiceSet(
     val service: PaymentExternalServiceImpl,
     val rateLimiter: CoroutineRateLimiter,
-    val context: TaskContext
+    val window: TaskWindow
 )
