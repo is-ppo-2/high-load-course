@@ -33,17 +33,15 @@ class PaymentExternalServiceImpl(
     val requestAverageProcessingTime = properties.request95thPercentileProcessingTime
     val speed = properties.speed
     val cost = properties.cost
-    private val callbackExecutor = Executors.newFixedThreadPool(4, NamedThreadFactory("callback-$accountName"))
-
-    private val httpClientExecutor = properties.httpExecutor
+    private val callbackExecutor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(), NamedThreadFactory("callback-$accountName"))
 
     private val client = OkHttpClient.Builder() .run {
-        dispatcher(Dispatcher(httpClientExecutor).apply {
+        protocols(Collections.singletonList(Protocol.H2_PRIOR_KNOWLEDGE))
+        connectionPool(ConnectionPool(properties.parallelRequests, properties.request95thPercentileProcessingTime.seconds, TimeUnit.SECONDS))
+        dispatcher(Dispatcher().apply {
             maxRequests = properties.parallelRequests
             maxRequestsPerHost = properties.parallelRequests
         })
-        connectionPool(ConnectionPool(properties.parallelRequests, properties.request95thPercentileProcessingTime.seconds, TimeUnit.SECONDS))
-        protocols(Collections.singletonList(Protocol.H2_PRIOR_KNOWLEDGE))
         connectTimeout(requestAverageProcessingTime)
         readTimeout(requestAverageProcessingTime)
         build()
@@ -74,6 +72,7 @@ class PaymentExternalServiceImpl(
             post(emptyBody)
         }.build()
 
+        val now = now()
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 window.release()
@@ -83,6 +82,7 @@ class PaymentExternalServiceImpl(
             }
 
             override fun onResponse(call: Call, response: Response) {
+                logger.error("${(now() - now) / 1000.0} s. for account $accountName. Dispatcher: ${client.dispatcher.runningCallsCount()} running, ${client.dispatcher.queuedCallsCount()} queued")
                 window.release()
                 callbackExecutor.submit {
                     val body = try {
@@ -126,7 +126,7 @@ class PaymentExternalServiceImpl(
 
     fun destroy() {
         callbackExecutor.shutdown()
-        httpClientExecutor.shutdown()
+        client.dispatcher.executorService.shutdown()
     }
 }
 

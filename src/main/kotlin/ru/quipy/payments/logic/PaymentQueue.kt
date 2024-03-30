@@ -1,20 +1,14 @@
 package ru.quipy.payments.logic
 
-import kotlinx.coroutines.*
 import ru.quipy.common.utils.NamedThreadFactory
 import ru.quipy.payments.config.ServiceSet
-import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 
 class PaymentQueue(
     private val set: ServiceSet,
 ) {
     val accountName = set.service.accountName
-    private val queueContext = CoroutineScope(SupervisorJob() +
-            Executors.newFixedThreadPool(4, NamedThreadFactory("payment-queue-$accountName"))
-        .asCoroutineDispatcher())
-
-    private val queue = ConcurrentLinkedQueue<PaymentRequest>()
+    private val queueExecutor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors(), NamedThreadFactory("payment-queue-$accountName"))
 
     fun tryEnqueue(request: PaymentRequest): Boolean {
         while (true) {
@@ -24,7 +18,7 @@ class PaymentQueue(
             val queued = set.window.jobCount.get()
             if (canWait - queued >= 1) {
                 if (set.window.jobCount.compareAndSet(queued, queued + 1)) {
-                    queue.add(request)
+                    queueExecutor.submit{ queueJob(request) }
                     return true
                 }
             } else {
@@ -33,20 +27,15 @@ class PaymentQueue(
         }
     }
 
-    private val queueJob = queueContext.launch {
-        while (true) {
-            val task = queue.poll()
-            if (task != null) {
-                set.window.acquireWindow()
-                set.rateLimiter.tickBlocking()
-                set.service.submitPaymentRequest(task.paymentId, task.amount, task.paymentStartedAt, set.window)
-            }
-            else yield()
-        }
+    private fun queueJob(request: PaymentRequest)
+    {
+        set.window.acquireWindow()
+        set.rateLimiter.tickBlocking()
+        set.service.submitPaymentRequest(request.paymentId, request.amount, request.paymentStartedAt, set.window)
     }
 
     fun destroy() {
-        queueContext.cancel()
+        queueExecutor.shutdown()
         set.service.destroy()
     }
 }

@@ -3,7 +3,7 @@ package ru.quipy.common.utils
 import java.util.concurrent.atomic.AtomicInteger
 
 class TaskWindow(
-   private val window: CoroutineOngoingWindow,
+   private val window: OngoingWindow,
 ) {
     var jobCount: AtomicInteger = AtomicInteger(0)
 
@@ -12,11 +12,7 @@ class TaskWindow(
         jobCount.decrementAndGet()
     }
 
-    suspend fun acquireWindow() {
+    fun acquireWindow() {
         window.acquire()
-    }
-
-    fun tryAcquireWindow(): Boolean {
-        return window.tryAcquire()
     }
 }
