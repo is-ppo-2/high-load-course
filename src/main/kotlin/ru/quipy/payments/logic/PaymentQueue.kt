@@ -35,13 +35,14 @@ class PaymentQueue(
     private fun queueJob(request: PaymentRequest)
     {
         try {
-            set.circuitBreaker.submitExecution()
             set.window.acquireWindow()
             set.rateLimiter.tickBlocking()
+            set.circuitBreaker.submitExecution()
             set.service.paymentRequest(request.paymentId, request.amount, request.paymentStartedAt, set.window, set.circuitBreaker)
         }
         catch (e: CircuitBreakerOpenException) {
             logger.error("Fallback for account $accountName")
+            set.window.release()
             fallback(request)
         }
         catch (e: Exception) {

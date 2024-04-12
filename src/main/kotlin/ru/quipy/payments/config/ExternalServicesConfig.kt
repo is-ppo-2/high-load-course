@@ -43,7 +43,7 @@ class ExternalServicesConfig(
             "default-2",
             parallelRequests = 100,
             rateLimitPerSec = 30,
-            request95thPercentileProcessingTime = Duration.ofMillis(5_000),
+            request95thPercentileProcessingTime = Duration.ofMillis(10_000),
             cost = 70
         )
 
