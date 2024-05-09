@@ -2,54 +2,61 @@ package ru.quipy.payments.logic
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import okhttp3.Dispatcher
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody
+import okhttp3.*
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Autowired
+import ru.quipy.common.utils.TaskContext
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
+import java.io.IOException
 import java.net.SocketTimeoutException
 import java.time.Duration
 import java.util.*
 import java.util.concurrent.Executors
 
 
-// Advice: always treat time as a Duration
 class PaymentExternalServiceImpl(
     private val properties: ExternalServiceProperties,
-) : PaymentExternalService {
+    private val paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>
+) {
 
     companion object {
         val logger = LoggerFactory.getLogger(PaymentExternalServiceImpl::class.java)
-
-        val paymentOperationTimeout = Duration.ofSeconds(80)
 
         val emptyBody = RequestBody.create(null, ByteArray(0))
         val mapper = ObjectMapper().registerKotlinModule()
     }
 
-    private val serviceName = properties.serviceName
-    private val accountName = properties.accountName
-    private val requestAverageProcessingTime = properties.request95thPercentileProcessingTime
-    private val rateLimitPerSec = properties.rateLimitPerSec
-    private val parallelRequests = properties.parallelRequests
+    val serviceName = properties.serviceName
+    val accountName = properties.accountName
+    val requestAverageProcessingTime = properties.request95thPercentileProcessingTime
+    val speed = properties.speed
+    val cost = properties.cost
 
-    @Autowired
-    private lateinit var paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>
+    private val httpClientExecutor = properties.executor
 
-    private val httpClientExecutor = Executors.newSingleThreadExecutor()
-
-    private val client = OkHttpClient.Builder().run {
-        dispatcher(Dispatcher(httpClientExecutor))
+    private val client = OkHttpClient.Builder() .run {
+        dispatcher(Dispatcher(httpClientExecutor).apply {
+            maxRequests = properties.parallelRequests
+            maxRequestsPerHost = properties.parallelRequests
+        })
+        connectTimeout(requestAverageProcessingTime)
+        readTimeout(requestAverageProcessingTime)
+        retryOnConnectionFailure(false)
         build()
     }
 
-    override fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long) {
-        logger.warn("[$accountName] Submitting payment request for payment $paymentId. Already passed: ${now() - paymentStartedAt} ms")
+    fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long, context: TaskContext) {
+        val passed = now() - paymentStartedAt
+        logger.warn("[$accountName] Submitting payment request for payment $paymentId. Already passed: $passed ms")
 
         val transactionId = UUID.randomUUID()
+
+        if (Duration.ofMillis(passed) > PaymentOperationTimeout) {
+            paymentESService.update(paymentId) {
+                it.logProcessing(false, now(), transactionId, reason = "Request timeout.")
+            }
+            return
+        }
         logger.info("[$accountName] Submit for $paymentId , txId: $transactionId")
 
         // Вне зависимости от исхода оплаты важно отметить что она была отправлена.
@@ -63,8 +70,14 @@ class PaymentExternalServiceImpl(
             post(emptyBody)
         }.build()
 
-        try {
-            client.newCall(request).execute().use { response ->
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                context.release()
+                handleException(paymentId, transactionId, e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                context.release()
                 val body = try {
                     mapper.readValue(response.body?.string(), ExternalSysResponse::class.java)
                 } catch (e: Exception) {
@@ -80,24 +93,29 @@ class PaymentExternalServiceImpl(
                     it.logProcessing(body.result, now(), transactionId, reason = body.message)
                 }
             }
-        } catch (e: Exception) {
-            when (e) {
-                is SocketTimeoutException -> {
-                    paymentESService.update(paymentId) {
-                        it.logProcessing(false, now(), transactionId, reason = "Request timeout.")
-                    }
+        })
+    }
+
+    private fun handleException(paymentId: UUID, transactionId: UUID, exception: Exception) {
+        when (exception) {
+            is SocketTimeoutException -> {
+                paymentESService.update(paymentId) {
+                    it.logProcessing(false, now(), transactionId, reason = "Request timeout.")
                 }
+            }
 
-                else -> {
-                    logger.error("[$accountName] Payment failed for txId: $transactionId, payment: $paymentId", e)
+            else -> {
+                logger.error(
+                    "[$accountName] Payment failed for txId: $transactionId, payment: $paymentId",
+                    exception
+                )
 
-                    paymentESService.update(paymentId) {
-                        it.logProcessing(false, now(), transactionId, reason = e.message)
-                    }
+                paymentESService.update(paymentId) {
+                    it.logProcessing(false, now(), transactionId, reason = exception.message)
                 }
             }
         }
     }
 }
 
-public fun now() = System.currentTimeMillis()
+fun now() = System.currentTimeMillis()

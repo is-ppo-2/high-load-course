@@ -2,6 +2,7 @@ package ru.quipy.payments.logic
 
 import java.time.Duration
 import java.util.*
+import java.util.concurrent.ExecutorService
 
 interface PaymentService {
     /**
@@ -20,8 +21,15 @@ data class ExternalServiceProperties(
     val accountName: String,
     val parallelRequests: Int,
     val rateLimitPerSec: Int,
-    val request95thPercentileProcessingTime: Duration = Duration.ofSeconds(11)
-)
+    val request95thPercentileProcessingTime: Duration = Duration.ofSeconds(11),
+    val cost: Int,
+    val executor: ExecutorService
+) {
+    /**
+     * Requests per second
+     */
+    val speed get() =  minOf(parallelRequests * 1.0 / request95thPercentileProcessingTime.toMillis() * 1000, rateLimitPerSec * 1.0)
+}
 
 /**
  * Describes response from external service.
@@ -30,3 +38,5 @@ class ExternalSysResponse(
     val result: Boolean,
     val message: String? = null,
 )
+
+val PaymentOperationTimeout = Duration.ofSeconds(80)
